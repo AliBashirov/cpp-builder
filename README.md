@@ -18,7 +18,6 @@ Perfect for small projects, demos, or learning purposes.
 
 - Linux, macOS, or Windows (via WSL or terminal)
 - `g++` (for C++ compilation)
-- Optional: `python3`, `java` if you plan to use those languages
 
 ---
 
@@ -29,3 +28,9 @@ Perfect for small projects, demos, or learning purposes.
 ```bash
 git clone https://github.com/AliBashirov/cpp-builder.git
 cd cpp-builder
+```
+### 2. Add the folder to path
+```bash
+echo 'export PATH="$PATH:/full/path/to/cpp-builder"' >> ~/.bashrc && source ~/.bashrc (change the command to zshrc if you use zsh)
+```
+Enter the path you cloned the repository to the "$PATH: " part
