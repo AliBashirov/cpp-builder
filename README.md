@@ -1,4 +1,4 @@
-# My TUI App
+# cpp-builder
 
 A **text-based user interface (TUI) application** built to demonstrate [your app’s purpose].  
 Designed to be fast, lightweight, and easy to use directly from the terminal.
