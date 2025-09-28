@@ -1,30 +1,31 @@
-# cpp-builder
+# C++ Builder
 
-A **text-based user interface (TUI) application** built to compile c++ files with a short command
-designed to be fast, lightweight, and easy to use directly from the terminal.
+A simple **C++ build tool** with a terminal-based interface (TUI) to compile and run C++ code quickly.  
+Perfect for small projects, demos, or learning purposes.
 
 ---
 
-## 📝 Features
+## ⚡ Features
 
-- Intuitive text-based menus
-- Fast navigation with keyboard
-- Works entirely in the terminal
-- Easy to install and run
+- Compile C++ programs with one command
+- Optional Java/Python support
+- TUI interface for quick navigation
+- Minimal setup, fast execution
 
 ---
 
 ## 💻 Requirements
 
 - Linux, macOS, or Windows (via WSL or terminal)
-- Python 3.10+ (if it’s a Python app) **OR** your app’s runtime environment
+- `g++` (for C++ compilation)
+- Optional: `python3`, `java` if you plan to use those languages
 
 ---
 
-## ⚡ Installation
+## 🛠️ Installation
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/<repo-name>.git
-cd <repo-name>
+git clone https://github.com/AliBashirov/cpp-builder.git
+cd cpp-builder
