@@ -1,7 +1,7 @@
 # cpp-builder
 
-A **text-based user interface (TUI) application** built to demonstrate [your app’s purpose].  
-Designed to be fast, lightweight, and easy to use directly from the terminal.
+A **text-based user interface (TUI) application** built to compile c++ files with a short command
+designed to be fast, lightweight, and easy to use directly from the terminal.
 
 ---
 
