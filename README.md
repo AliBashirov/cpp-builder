@@ -60,22 +60,22 @@ set -U fish_user_paths /full/path/to/cpp-builder $fish_user_paths
 
 ### Basic usage
 ```bash
-cpp-builder filename.cpp
+build filename.cpp
 ```
 
 ### Using Flags
 
 **Compile only (doesn’t run):**
 ```bash
-cpp-builder -co filename.cpp
+build -co filename.cpp
 ```
 
 **Use test cases from files (`in.case` / `in.out`):**
 ```bash
-cpp-builder -case filename.cpp
+build -case filename.cpp
 ```
 *Make sure you have `in.case` (input) and `in.out` (expected output) in the same directory when using `-case`.*
 
 **Combine flags if needed:**
 ```bash
-cpp-builder -co -case filename.cpp
+build -co -case filename.cpp
