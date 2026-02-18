@@ -1,185 +1,334 @@
 #!/bin/bash
-# ----------------------------
-# C++ Builder - Build Tool
-# ----------------------------
 
+# --- pathing & environment
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-SETTINGS_FILE="$SCRIPT_DIR/build_settings"
+GLOBAL_SETTINGS="$SCRIPT_DIR/build_settings"
+LOCAL_CONFIG="./.build_config"
 
-# Initialize settings if not present
-if [ ! -f "$SETTINGS_FILE" ]; then
-    cat > "$SETTINGS_FILE" <<EOL
-FIGLET_COMPILED=1
-FIGLET_RUNNING=1
-FIGLET_DONE=0
-BUILD_MODE=release
-VERSION="1.0.0"
-EOL
-fi
-
-source "$SETTINGS_FILE"
-
-# Colors
+# --- colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
+MAGENTA='\033[0;35m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
-# Check figlet
-if ! command -v figlet &> /dev/null; then
-    echo -e "${RED}Figlet not installed. Run: sudo apt install figlet${NC}"
-    exit 1
-fi
-
-# ----------------------------
-# Terminal UI for settings
-# ----------------------------
-tui_settings() {
-    while true; do
-        clear
-        echo -e "${CYAN}Build Settings TUI${NC}\n"
-        echo "1) Toggle COMPILED banner (current: $FIGLET_COMPILED)"
-        echo "2) Toggle RUNNING banner (current: $FIGLET_RUNNING)"
-        echo "3) Toggle DONE banner (current: $FIGLET_DONE)"
-        echo "4) Change build mode (current: $BUILD_MODE)"
-        echo "5) Exit and save"
-        echo
-        read -p "Select an option: " opt
-        case $opt in
-            1) FIGLET_COMPILED=$((1-FIGLET_COMPILED)) ;;
-            2) FIGLET_RUNNING=$((1-FIGLET_RUNNING)) ;;
-            3) FIGLET_DONE=$((1-FIGLET_DONE)) ;;
-            4)
-                echo "Select build mode:"
-                select mode in release debug; do
-                    [ -n "$mode" ] && BUILD_MODE="$mode" && break
-                done
-                ;;
-            5) break ;;
-            *) echo "Invalid option!"; sleep 1 ;;
-        esac
+# --- check dependencies
+check_deps() {
+    local deps=("g++" "figlet")
+    for tool in "${deps[@]}"; do
+        if ! command -v "$tool" &> /dev/null; then
+            echo -e "${RED}Missing dependency: $tool${NC}"
+            [ "$tool" == "figlet" ] && echo -e "${DIM}Install: sudo apt install figlet${NC}"
+            exit 1
+        fi
     done
+}
 
-    cat > "$SETTINGS_FILE" <<EOL
+# --- global init
+init_settings() {
+    if [ ! -f "$GLOBAL_SETTINGS" ]; then
+        cat > "$GLOBAL_SETTINGS" <<EOL
+FIGLET_COMPILED=1
+FIGLET_RUNNING=1
+FIGLET_DONE=1
+FIGLET_FAILED=1
+BUILD_MODE=release
+VERSION="1.4.0"
+EOL
+    fi
+    source "$GLOBAL_SETTINGS"
+
+    for var in FIGLET_COMPILED FIGLET_RUNNING FIGLET_DONE FIGLET_FAILED; do
+        if ! [[ "${!var}" =~ ^[01]$ ]]; then
+            echo -e "${YELLOW}Warning: corrupted setting '$var', resetting to 1${NC}"
+            declare -g "$var=1"
+        fi
+    done
+}
+
+# --- project-specific init
+init_project() {
+    if [ -f "$LOCAL_CONFIG" ]; then
+        source "$LOCAL_CONFIG"
+    else
+        PROJECT_IN="in.case"
+        PROJECT_OUT="in.out"
+    fi
+}
+
+# --- banner logic
+show_banner() {
+    local enabled=$1
+    local text=$2
+    local color=$3
+    if [ "$enabled" -eq 1 ]; then
+        echo -ne "${color}"
+        figlet -c "$text"
+        echo -ne "${NC}"
+    else
+        echo -e "${color}${BOLD}>>> $text <<<${NC}"
+    fi
+}
+
+# --- save settings to disk
+save_settings() {
+    cat > "$GLOBAL_SETTINGS" <<EOL
 FIGLET_COMPILED=$FIGLET_COMPILED
 FIGLET_RUNNING=$FIGLET_RUNNING
 FIGLET_DONE=$FIGLET_DONE
+FIGLET_FAILED=$FIGLET_FAILED
 BUILD_MODE=$BUILD_MODE
 VERSION="$VERSION"
 EOL
-    echo "Settings saved!"
-    sleep 1
 }
 
-# ----------------------------
-# Command handling
-# ----------------------------
-if [ "$1" == "help" ]; then
-    echo -e "${CYAN}Build Tool Help:${NC}"
-    echo "Usage:"
-    echo "  build <file.cpp>"
-    echo "  build -co <file.cpp>     # compile only (no run, no I/O)"
-    echo "  build -case             # input: in.case, output: in.out"
-    echo "  build settings"
-    echo "  build clean <file>"
-    echo "  build version"
-    echo "  build help"
+# ─────────────────────────────────────────────
+#  SETTINGS TUI
+# ─────────────────────────────────────────────
+tui_settings() {
+    local selected=0
+    local num_options=7
+
+    draw_tui() {
+        clear
+
+        echo -e "${MAGENTA}${BOLD}"
+        echo    "  ╔══════════════════════════════════════════╗"
+        echo    "  ║         C++ BUILDER  ·  SETTINGS         ║"
+        echo    "  ║              v${VERSION}                        ║"
+        echo -e "  ╚══════════════════════════════════════════╝${NC}"
+        echo ""
+
+        toggle_str() {
+            [ "$1" -eq 1 ] && echo -e "${GREEN}${BOLD}[  ON  ]${NC}" || echo -e "${RED}${BOLD}[ OFF  ]${NC}"
+        }
+
+        draw_row() {
+            local idx=$1
+            local label=$2
+            local value_str=$3
+            local hint=$4
+            if [ "$idx" -eq "$selected" ]; then
+                echo -e "  ${CYAN}${BOLD}▶  ${label}${NC}  ${value_str}  ${DIM}${hint}${NC}"
+            else
+                echo -e "  ${DIM}   ${label}${NC}  ${value_str}  ${DIM}${hint}${NC}"
+            fi
+        }
+
+        draw_row 0 "Compiled Banner" "$(toggle_str $FIGLET_COMPILED)" "figlet on build success"
+        draw_row 1 "Running  Banner" "$(toggle_str $FIGLET_RUNNING)"  "figlet before exec"
+        draw_row 2 "Done     Banner" "$(toggle_str $FIGLET_DONE)"     "figlet on clean exit"
+        draw_row 3 "Failed   Banner" "$(toggle_str $FIGLET_FAILED)"   "figlet on build error"
+
+        echo ""
+        echo -e "  ${MAGENTA}──────────────────────────────────────────${NC}"
+
+        local mode_str
+        if [ "$BUILD_MODE" == "release" ]; then
+            mode_str="${BLUE}${BOLD}[ RELEASE ]${NC}"
+        else
+            mode_str="${YELLOW}${BOLD}[  DEBUG  ]${NC}"
+        fi
+        draw_row 4 "Build Mode      " "$mode_str" "release=O2  debug=O0+g3"
+
+        echo ""
+        echo -e "  ${MAGENTA}──────────────────────────────────────────${NC}"
+
+        if [ "$selected" -eq 5 ]; then
+            echo -e "  ${GREEN}${BOLD}▶  ✔  Save & Exit${NC}"
+        else
+            echo -e "  ${DIM}      ✔  Save & Exit${NC}"
+        fi
+
+        echo ""
+        echo -e "  ${DIM}↑↓ or j/k navigate · Enter/Space toggle · q quit without saving${NC}"
+        echo ""
+    }
+
+    while true; do
+        draw_tui
+
+        IFS= read -rsn1 key
+        if [[ "$key" == $'\x1b' ]]; then
+            read -rsn2 -t 0.1 key2
+            key="${key}${key2}"
+        fi
+
+        case "$key" in
+            $'\x1b[A' | k)
+                (( selected = (selected - 1 + num_options) % num_options ))
+                ;;
+            $'\x1b[B' | j)
+                (( selected = (selected + 1) % num_options ))
+                ;;
+            '' | ' ')
+                case $selected in
+                    0) FIGLET_COMPILED=$(( 1 - FIGLET_COMPILED )) ;;
+                    1) FIGLET_RUNNING=$(( 1 - FIGLET_RUNNING )) ;;
+                    2) FIGLET_DONE=$(( 1 - FIGLET_DONE )) ;;
+                    3) FIGLET_FAILED=$(( 1 - FIGLET_FAILED )) ;;
+                    4) [[ "$BUILD_MODE" == "release" ]] && BUILD_MODE="debug" || BUILD_MODE="release" ;;
+                    5) save_settings; clear; echo -e "${GREEN}${BOLD}✔  Settings saved.${NC}"; sleep 0.6; return ;;
+                esac
+                ;;
+            q | Q)
+                clear
+                echo -e "${YELLOW}Settings discarded.${NC}"
+                sleep 0.4
+                return
+                ;;
+        esac
+    done
+}
+
+# --- setup logic
+project_setup() {
+    echo -e "${CYAN}${BOLD}--- Local Project Configuration ---${NC}"
+    read -rp "Input filename  [default: in.case]: " IN_NAME
+    read -rp "Output filename [default: in.out ]: " OUT_NAME
+
+    IN_NAME=${IN_NAME:-in.case}
+    OUT_NAME=${OUT_NAME:-in.out}
+
+    cat > "$LOCAL_CONFIG" <<EOL
+PROJECT_IN="$IN_NAME"
+PROJECT_OUT="$OUT_NAME"
+EOL
+
+    if [ ! -f "$IN_NAME" ]; then
+        touch "$IN_NAME"
+        echo -e "${YELLOW}Created empty input file: $IN_NAME${NC}"
+    fi
+
+    echo -e "${GREEN}Project configured: ${BOLD}$IN_NAME${NC}${GREEN} → ${BOLD}$OUT_NAME${NC}"
     exit 0
-elif [ "$1" == "settings" ]; then
-    tui_settings
-    exit 0
-elif [ "$1" == "clean" ]; then
-    if [ -z "$2" ]; then
-        echo -e "${RED}Error: specify file to clean.${NC}"
+}
+
+# --- clean logic
+clean_target() {
+    local file=$1
+    if [ -z "$file" ]; then
+        echo -e "${RED}Specify a file to clean (e.g., build clean main.cpp)${NC}"
         exit 1
     fi
-    TARGET="${2%.cpp}"
-    if [ -f "$TARGET" ]; then
-        rm "$TARGET"
-        echo -e "${GREEN}Deleted $TARGET${NC}"
+    local base="${file%.cpp}"
+    if [ -f "$base" ]; then
+        rm "$base"
+        echo -e "${GREEN}Removed binary: $base${NC}"
     else
-        echo -e "${YELLOW}$TARGET does not exist.${NC}"
+        echo -e "${YELLOW}Binary '$base' not found — nothing to clean.${NC}"
     fi
     exit 0
-elif [ "$1" == "version" ]; then
-    echo -e "${CYAN}Build Tool Version:${NC} $VERSION"
-    exit 0
-fi
+}
 
-# ----------------------------
-# Modes
-# ----------------------------
+# --- help
+show_help() {
+    echo -e "${CYAN}${BOLD}C++ Builder v$VERSION${NC}"
+    echo -e "${DIM}A fast local build & run tool for competitive / daily C++ work.${NC}"
+    echo ""
+    echo -e "${YELLOW}${BOLD}Usage:${NC}  build [options] <filename.cpp>"
+    echo ""
+    echo -e "${YELLOW}${BOLD}Options:${NC}"
+    printf "  ${CYAN}%-14s${NC} %s\n" "-co"     "Compile only — skip execution"
+    printf "  ${CYAN}%-14s${NC} %s\n" "--case"  "Run with localized project I/O redirection"
+    echo ""
+    echo -e "${YELLOW}${BOLD}Commands:${NC}"
+    printf "  ${CYAN}%-14s${NC} %s\n" "setup"    "Configure project input/output files"
+    printf "  ${CYAN}%-14s${NC} %s\n" "settings" "Open interactive settings TUI"
+    printf "  ${CYAN}%-14s${NC} %s\n" "clean"    "Remove the binary for a given .cpp file"
+    printf "  ${CYAN}%-14s${NC} %s\n" "version"  "Print version string"
+    printf "  ${CYAN}%-14s${NC} %s\n" "help"     "Show this message"
+}
+
+# ─────────────────────────────────────────────
+#  MAIN
+# ─────────────────────────────────────────────
+check_deps
+init_settings
+init_project
+
 COMPILE_ONLY=0
 CASE_MODE=0
+SRC=""
 
-if [ "$1" == "-co" ]; then
-    COMPILE_ONLY=1
-    SRC="$2"
-elif [ "$1" == "--case" ]; then
-    CASE_MODE=1
-    SRC="main.cpp"
-    TARGET="main_exec"
-    IN_FILE="in.case"
-    OUT_FILE="in.out"
-else
-    SRC="$1"
-fi
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        help)     show_help;                                   exit 0 ;;
+        settings) tui_settings;                                exit 0 ;;
+        setup)    project_setup;                               exit 0 ;;
+        version)  echo -e "${CYAN}C++ Builder v$VERSION${NC}"; exit 0 ;;
+        clean)    clean_target "$2";                           exit 0 ;;
+        -co)      COMPILE_ONLY=1; shift ;;
+        --case)   CASE_MODE=1;    shift ;;
+        *.cpp)    SRC="$1";       shift ;;
+        *)        echo -e "${RED}Unknown argument: $1${NC}"; exit 1 ;;
+    esac
+done
 
 if [ -z "$SRC" ]; then
-    echo -e "${RED}Error: no source file specified.${NC}"
+    echo -e "${RED}No source file specified. Run 'build help' for usage.${NC}"
+    exit 1
+fi
+
+if [ ! -f "$SRC" ]; then
+    echo -e "${RED}File not found: $SRC${NC}"
     exit 1
 fi
 
 TARGET="${SRC%.cpp}"
 
-if [ ! -f "$SRC" ]; then
-    echo -e "${RED}Error: source file $SRC not found.${NC}"
-    exit 1
+# --- compiler flags
+CXXFLAGS=(
+    -std=c++23
+    -v
+    -Wall -Wextra -Wpedantic
+    -Wshadow -Wconversion -Wsign-conversion
+    -Wnull-dereference -Wdouble-promotion -Wformat=2
+    -fstack-protector-strong
+    -fdiagnostics-color=always
+    -fno-omit-frame-pointer
+)
+
+if [ "$BUILD_MODE" == "debug" ]; then
+    CXXFLAGS+=(-O0 -g3 -DDEBUG)
+else
+    CXXFLAGS+=(-O2 -DNDEBUG)
 fi
 
-# ----------------------------
-# Compiler flags
-# ----------------------------
-CXXFLAGS="-std=c++23 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion \
--Wnull-dereference -Wdouble-promotion -Wformat=2 -fstack-protector-strong \
--fsanitize=address,undefined -fno-omit-frame-pointer -fdiagnostics-color=always \
--ftime-report -v"
+# --- compile
+echo -e "${CYAN}${BOLD}⚒  Compiling:${NC} $SRC  ${MAGENTA}[${BUILD_MODE}]${NC}"
+echo ""
 
-[ "$BUILD_MODE" == "debug" ] && CXXFLAGS="$CXXFLAGS -O0 -g3"
-[ "$BUILD_MODE" == "release" ] && CXXFLAGS="$CXXFLAGS -O2"
-
-# ----------------------------
-# Compile
-# ----------------------------
-echo -e "${CYAN}⚒️  Compiling $SRC ...${NC}"
-g++ $CXXFLAGS "$SRC" -o "$TARGET"
-
-# ----------------------------
-# Post-build
-# ----------------------------
-if [ $? -eq 0 ]; then
-    [ "$FIGLET_COMPILED" -eq 1 ] && figlet -c "COMPILED!" || echo -e "${GREEN}✅ Build successful!${NC}"
+if g++ "${CXXFLAGS[@]}" "$SRC" -o "$TARGET"; then
+    show_banner "$FIGLET_COMPILED" "COMPILED" "$GREEN"
 
     if [ "$COMPILE_ONLY" -eq 1 ]; then
-        echo -e "${GREEN}🧱 Compile-only mode: skipping execution.${NC}"
+        echo -e "${YELLOW}Compile-only mode — binary saved as: ${BOLD}$TARGET${NC}"
         exit 0
     fi
 
     if [ "$CASE_MODE" -eq 1 ]; then
-        echo -e "${YELLOW}🚀 Running in case mode...${NC}"
-        ./"$TARGET" < "$IN_FILE" > "$OUT_FILE"
-        echo -e "${GREEN}Output written to $OUT_FILE${NC}"
+        if [ ! -f "$PROJECT_IN" ]; then
+            echo -e "${RED}Missing input file: $PROJECT_IN${NC}"
+            echo -e "${YELLOW}Run 'build setup' to configure project I/O.${NC}"
+            exit 1
+        fi
+        echo -e "${YELLOW}🚀 Running with cases: ${BOLD}$PROJECT_IN${NC}${YELLOW} → ${BOLD}$PROJECT_OUT${NC}"
+        ./"$TARGET" < "$PROJECT_IN" | tee "$PROJECT_OUT"
     else
-        [ "$FIGLET_RUNNING" -eq 1 ] && figlet -c "RUNNING"
-        echo -e "${YELLOW}🚀 Program is running...${NC}"
+        show_banner "$FIGLET_RUNNING" "RUNNING" "$YELLOW"
         ./"$TARGET"
     fi
 
-    echo
-    [ "$FIGLET_DONE" -eq 1 ] && figlet -c "DONE"
-    echo -e "${GREEN}🏁 Program finished.${NC}"
+    echo ""
+    show_banner "$FIGLET_DONE" "DONE" "$GREEN"
+    echo -e "${GREEN}${BOLD}🏁 Completed successfully.${NC}"
 else
-    figlet -c "FAILED"
-    echo -e "${RED}❌ Build failed.${NC}"
+    show_banner "$FIGLET_FAILED" "FAILED" "$RED"
+    echo -e "${RED}${BOLD}✖  Build failed — fix the errors above and try again.${NC}"
+    exit 1
 fi
